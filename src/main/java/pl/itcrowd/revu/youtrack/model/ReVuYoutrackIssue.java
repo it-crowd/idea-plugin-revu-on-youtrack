@@ -5,6 +5,8 @@ import org.sylfra.idea.plugins.revu.model.Issue;
 public class ReVuYoutrackIssue extends Issue {
 // ------------------------------ FIELDS ------------------------------
 
+    private String presentableSummary;
+
     private String ticket;
 
 // --------------------------- CONSTRUCTORS ---------------------------
@@ -16,6 +18,15 @@ public class ReVuYoutrackIssue extends Issue {
 
 // --------------------- GETTER / SETTER METHODS ---------------------
 
+    @Override
+    public String getPresentableSummary()
+    {
+        if (presentableSummary == null) {
+            presentableSummary = String.format("%s %s", getTicket(), getSummary());
+        }
+        return presentableSummary;
+    }
+
     public String getTicket()
     {
         return ticket;
@@ -23,6 +34,7 @@ public class ReVuYoutrackIssue extends Issue {
 
     public void setTicket(String ticket)
     {
+        presentableSummary = null;
         this.ticket = ticket;
     }
 
@@ -51,5 +63,14 @@ public class ReVuYoutrackIssue extends Issue {
     public int hashCode()
     {
         return ticket == null ? super.hashCode() : ticket.hashCode();
+    }
+
+// -------------------------- OTHER METHODS --------------------------
+
+    @Override
+    public void setSummary(String summary)
+    {
+        presentableSummary = null;
+        super.setSummary(summary);
     }
 }
