@@ -1,0 +1,35 @@
+<idea-plugin version="2" url="https://github.com/it-crowd/idea-plugin-revu-on-youtrack">
+    <id>pl.itcrowd.revu.youtrack</id>
+    <name>reVu on YouTrack</name>
+    <description>Extension of reVu plugin to store issues on YouTrack</description>
+    <version>1.0.0-SNAPSHOT</version>
+    <vendor url="http://itcrowd.pl" email="contact@itcrowd.pl">IT Crowd</vendor>
+
+    <!-- please see http://confluence.jetbrains.net/display/IDEADEV/Build+Number+Ranges for description -->
+    <idea-version since-build="107.105"/>
+
+    <project-components>
+        <component>
+            <implementation-class>pl.itcrowd.revu.youtrack.business.YoutrackReviewManager</implementation-class>
+        </component>
+    </project-components>
+
+    <actions>
+        <action id="pl.itcrowd.revu.youtrack.actions.review.RefreshYoutrackReviewAction"
+                class="pl.itcrowd.revu.youtrack.actions.review.RefreshYoutrackReviewAction" text="Refresh YouTrack review"
+                description="Loads issues and referential data from YouTrack"/>
+
+        <group id="revu.YouTrack">
+            <separator/>
+            <reference ref="pl.itcrowd.revu.youtrack.actions.review.RefreshYoutrackReviewAction"/>
+            <add-to-group group-id="revu.reviewing.main" anchor="last"/>
+        </group>
+    </actions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectConfigurable instance="pl.itcrowd.revu.youtrack.ui.forms.settings.YoutrackReviewManagerSettingsForm"/>
+    </extensions>
+
+    <depends>org.sylfra.idea.plugins.revu</depends>
+
+</idea-plugin>
