@@ -23,6 +23,7 @@ import org.sylfra.idea.plugins.revu.model.User;
 import org.sylfra.idea.plugins.revu.ui.statusbar.StatusBarComponent;
 import org.sylfra.idea.plugins.revu.ui.statusbar.StatusBarMessage;
 import org.sylfra.idea.plugins.revu.utils.RevuUtils;
+import pl.com.it_crowd.youtrack.api.Command;
 import pl.com.it_crowd.youtrack.api.Filter;
 import pl.com.it_crowd.youtrack.api.IssueWrapper;
 import pl.com.it_crowd.youtrack.api.YoutrackAPI;
@@ -41,6 +42,7 @@ import javax.xml.bind.JAXBException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 
 @State(
@@ -167,8 +169,14 @@ public class YoutrackReviewManager implements ProjectComponent, PersistentStateC
         review.setShared(true);
         review.setStatus(ReviewStatus.REVIEWING);
         review.setExternalizable(false);
-        final User currentUser = RevuUtils.getCurrentUser();
+        User currentUser = RevuUtils.getCurrentUser();
         if (currentUser != null) {
+            final User userByLogin = review.getDataReferential().getUsersByLogin(true).get(currentUser.getLogin());
+            if (userByLogin != null) {
+                userByLogin.setDisplayName(currentUser.getDisplayName());
+                userByLogin.setPassword(currentUser.getPassword());
+                currentUser = userByLogin;
+            }
             currentUser.addRole(User.Role.ADMIN);
             currentUser.addRole(User.Role.REVIEWER);
             currentUser.addRole(User.Role.AUTHOR);
@@ -185,7 +193,12 @@ public class YoutrackReviewManager implements ProjectComponent, PersistentStateC
 
     private User getUser(String youtrackUsername)
     {
-        return new User(youtrackUsername, null, youtrackUsername);
+        User user = review.getDataReferential().getUsersByLogin(true).get(youtrackUsername);
+        if (user == null) {
+            user = new User(youtrackUsername, null, youtrackUsername);
+            review.getDataReferential().addUser(user);
+        }
+        return user;
     }
 
     private String getYoutrackFileField()
@@ -242,13 +255,18 @@ public class YoutrackReviewManager implements ProjectComponent, PersistentStateC
     {
         loadingIssuesFromYoutrack = true;
         try {
-            List<IssueWrapper> tickets = getYoutrackAPI().searchIssuesByProject(getYoutrackProjectId(),
-                Filter.stateFilter(StateValues.NotVerified, StateValues.NotObsolete).maxResults(999999));
-            for (IssueWrapper ticket : tickets) {
-                final Issue issue = toYoutrackIssue(ticket);
-                issue.setReview(review);
-                review.addIssue(issue);
-            }
+            int firstResult = 0;
+            List<IssueWrapper> tickets;
+            do {
+                tickets = getYoutrackAPI().searchIssuesByProject(getYoutrackProjectId(),
+                    Filter.stateFilter(StateValues.NotVerified, StateValues.NotObsolete).after(firstResult).maxResults(999999));
+                for (IssueWrapper ticket : tickets) {
+                    final Issue issue = toYoutrackIssue(ticket);
+                    issue.setReview(review);
+                    review.addIssue(issue);
+                }
+                firstResult += tickets.size();
+            } while (!tickets.isEmpty());
         } finally {
             loadingIssuesFromYoutrack = false;
         }
@@ -327,6 +345,10 @@ public class YoutrackReviewManager implements ProjectComponent, PersistentStateC
             issue.setStatus(IssueStatus.CLOSED);
         } else {
             issue.setStatus(IssueStatus.RESOLVED);
+        }
+        final String assignee = ticket.getFieldValue(Fields.assignee);
+        if (!StringUtils.isBlank(assignee)) {
+            issue.getAssignees().add(getUser(assignee));
         }
         final String ticketFieldValue = ticket.getFieldValue(getYoutrackFileField());
         if (!StringUtils.isBlank(ticketFieldValue)) {
@@ -418,8 +440,29 @@ public class YoutrackReviewManager implements ProjectComponent, PersistentStateC
         {
             getYoutrackAPI().updateIssue(issue.getTicket(), issue.getSummary(), issue.getDesc());
             if (issue.getAssignees().size() > 0) {
-                final String login = issue.getAssignees().get(0).getLogin();
+                final Iterator<User> iterator = issue.getAssignees().iterator();
+                final String login = iterator.next().getLogin();
+                while (iterator.hasNext()) {
+                    iterator.next();
+                    iterator.remove();
+                }
                 getYoutrackAPI().command(issue.getTicket(), Fields.assignee.getCommand() + " " + login, null, null, disableNotifications, null);
+            }
+            final IssueStatus status = issue.getStatus();
+            if (status != null) {
+                StateValues ticketState = null;
+                if (IssueStatus.REOPENED.equals(status)) {
+                    ticketState = StateValues.Reopened;
+                } else if (IssueStatus.RESOLVED.equals(status)) {
+                    ticketState = StateValues.Fixed;
+                } else if (IssueStatus.TO_RESOLVE.equals(status)) {
+                    ticketState = StateValues.Open;
+                } else if (IssueStatus.CLOSED.equals(status)) {
+                    ticketState = StateValues.Verified;
+                }
+                if (ticketState != null) {
+                    getYoutrackAPI().command(issue.getTicket(), Command.stateCommand(ticketState));
+                }
             }
             final IssuePriority issuePriority = issue.getPriority();
             if (issuePriority != null) {
